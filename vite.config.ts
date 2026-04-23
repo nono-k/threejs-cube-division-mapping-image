@@ -3,7 +3,7 @@ import glsl from "vite-plugin-glsl";
 import path from "node:path";
 
 export default defineConfig({
-  base: "/threejs-template/",
+  base: "/threejs-cube-division-mappng-image/",
 	root: "src/",
 	publicDir: "../public/",
 	plugins: [glsl()],

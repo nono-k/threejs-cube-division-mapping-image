@@ -8,6 +8,8 @@ body {
   font-size: 1rem;
   line-height: 1.5;
   letter-spacing: 0.05em;
+  /* background: #f3d95b; */
+  background: #f3b15b;
 }
 
 a {
@@ -68,4 +70,20 @@ summary::-webkit-details-marker {
 
 summary {
   display: block;
+}
+
+.links {
+  position: absolute;
+  left: 50%;
+  translate: -50% 0;
+  bottom: 8%;
+
+  display: flex;
+  gap: 1.5rem;
+
+  a {
+    &:hover {
+      opacity: 0.8;
+    }
+  }
 }
