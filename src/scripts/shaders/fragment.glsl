@@ -5,23 +5,33 @@ varying float vTexIndex;
 
 uniform sampler2D uTextures[6];
 uniform float uActiveTex;
+uniform float uProgress;
+
+vec4 getTex(int id, vec2 uv) {
+  if (id == 0) return texture2D(uTextures[0], uv);
+  if (id == 1) return texture2D(uTextures[1], uv);
+  if (id == 2) return texture2D(uTextures[2], uv);
+  if (id == 3) return texture2D(uTextures[3], uv);
+  if (id == 4) return texture2D(uTextures[4], uv);
+  return texture2D(uTextures[5], uv);
+}
 
 void main() {
   vec2 uv = vUv;
   int id = int(vTexIndex);
+  vec4 base = getTex(id, uv);
 
-  vec4 color;
+  float isActive = step(0.1, 1.0 - abs(vTexIndex - uActiveTex));
 
-  if (id == 0) color = texture2D(uTextures[0], vUv);
-  else if (id == 1) color = texture2D(uTextures[1], vUv);
-  else if (id == 2) color = texture2D(uTextures[2], vUv);
-  else if (id == 3) color = texture2D(uTextures[3], vUv);
-  else if (id == 4) color = texture2D(uTextures[4], vUv);
-  else color = texture2D(uTextures[5], vUv);
+  // 非アクティブ側の強さ（progressに応じて強まる）
+  float dim = (1.0 - isActive) * uProgress;
 
-  if (uActiveTex >= 0.0 && abs(vTexIndex - uActiveTex) > 0.1) {
-    discard;
-  }
+  // 黒を被せる（0.0〜0.8くらいで調整）
+  float overlayStrength = 0.85 * dim;
+  vec3 color = mix(base.rgb, vec3(0.0), overlayStrength);
 
-  gl_FragColor = color;
+  // 透明度も少し落とす（0.4〜0.8くらいで調整）
+  float alpha = mix(base.a, base.a * 0.4, dim);
+
+  gl_FragColor = vec4(color, alpha);
 }

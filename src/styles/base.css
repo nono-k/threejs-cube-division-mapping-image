@@ -8,7 +8,6 @@ body {
   font-size: 1rem;
   line-height: 1.5;
   letter-spacing: 0.05em;
-  /* background: #f3d95b; */
   background: #f3b15b;
 }
 
@@ -76,7 +75,7 @@ summary {
   position: absolute;
   left: 50%;
   translate: -50% 0;
-  bottom: 8%;
+  bottom: 5%;
 
   display: flex;
   gap: 1.5rem;

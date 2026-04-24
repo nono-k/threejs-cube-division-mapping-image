@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { PerspectiveCamera, Controls } from './core/Camera';
 import { Three } from './core/Three';
-import { Gui } from './Gui';
+import gsap from 'gsap';
 
 import vertex from './shaders/vertex.glsl?raw';
 import fragment from './shaders/fragment.glsl?raw';
@@ -13,16 +13,86 @@ import remon from '../images/remon.jpg';
 import watermelon from '../images/watermelon.jpg';
 import kiwi from '../images/kiwi.jpg';
 
+type FruitKey =
+  | 'apple'
+  | 'orange'
+  | 'grape'
+  | 'remon'
+  | 'watermelon'
+  | 'kiwi';
+
+type FaceConfig = {
+  right: [number, number, number];
+  up: [number, number, number];
+  normal: [number, number, number];
+};
+
 export class App extends Three {
   private readonly camera: PerspectiveCamera;
   private mesh!: THREE.InstancedMesh;
   private textures!: THREE.Texture[];
 
   private readonly divisions = 3;
+  private readonly cubeSize = 1.2;
+  private readonly gap = 0.05;
   private readonly faceCount = 6;
   private readonly totalCount = this.divisions * this.divisions * this.faceCount;
-  private cubeSize: number;
-  private gap: number;
+
+  private progressTween: gsap.core.Tween | null = null;
+  private activeTex = -1;
+
+  private readonly intro = {
+    rotationSpeed: 0,
+    done: false,
+  };
+
+  private readonly textureMap: Record<FruitKey, number> = {
+    apple: 0,
+    orange: 1,
+    grape: 2,
+    remon: 3,
+    watermelon: 4,
+    kiwi: 5,
+  };
+
+  private readonly faceConfigs: FaceConfig[] = [
+    // front
+    {
+      right: [1, 0, 0],
+      up: [0, 1, 0],
+      normal: [0, 0, 1],
+    },
+    // back
+    {
+      right: [-1, 0, 0],
+      up: [0, 1, 0],
+      normal: [0, 0, -1],
+    },
+    // right
+    {
+      right: [0, 0, -1],
+      up: [0, 1, 0],
+      normal: [1, 0, 0],
+    },
+    // left
+    {
+      right: [0, 0, 1],
+      up: [0, 1, 0],
+      normal: [-1, 0, 0],
+    },
+    // top
+    {
+      right: [1, 0, 0],
+      up: [0, 0, -1],
+      normal: [0, 1, 0],
+    },
+    // bottom
+    {
+      right: [1, 0, 0],
+      up: [0, 0, 1],
+      normal: [0, -1, 0],
+    },
+  ];
 
   constructor(canvas: HTMLCanvasElement) {
     super(canvas);
@@ -30,24 +100,25 @@ export class App extends Three {
     this.camera = new PerspectiveCamera();
     new Controls(this.renderer, this.camera);
 
-    this.cubeSize = 1;
-    this.gap = 0.05;
-
-    this.loader().then(() => {
-      this.createGeometry();
-      this.setGui();
-      this.hoverEvent();
-
-      window.addEventListener('resize', this.resize.bind(this));
-      this.renderer.setAnimationLoop(this.animate.bind(this));
-    });
+    this.init();
   }
 
-  private async loader() {
+  private async init() {
+    await this.loadTextures();
+
+    this.createGeometry();
+    this.introAnimation();
+    this.setupHoverEvent();
+
+    this.renderer.setAnimationLoop(this.animate.bind(this));
+    window.addEventListener('resize', this.resize.bind(this));
+  }
+
+  private async loadTextures() {
     const loader = new THREE.TextureLoader();
     this.textures = await Promise.all([
-      loader.loadAsync(orange),
       loader.loadAsync(apple),
+      loader.loadAsync(orange),
       loader.loadAsync(grape),
       loader.loadAsync(remon),
       loader.loadAsync(watermelon),
@@ -56,11 +127,12 @@ export class App extends Three {
   }
 
   private createGeometry() {
-    const size = this.cubeSize;
-    const gap = this.gap;
-    const cell = size / this.divisions;
+    const cell = this.cubeSize / this.divisions;
 
-    const geometry = new THREE.PlaneGeometry(cell - gap, cell - gap);
+    const geometry = new THREE.PlaneGeometry(
+      cell - this.gap,
+      cell - this.gap,
+    );
 
     const material = new THREE.ShaderMaterial({
       vertexShader: vertex,
@@ -69,149 +141,159 @@ export class App extends Three {
       uniforms: {
         uTextures: { value: this.textures },
         uActiveTex: { value: -1 },
+        uProgress: { value: 0 },
       }
     });
 
     this.mesh = new THREE.InstancedMesh(geometry, material, this.totalCount);
 
-    const all = new THREE.Object3D();
-
-    let i = 0;
-
-    const rightVec = new THREE.Vector3();
-    const upVec = new THREE.Vector3();
-    const normal = new THREE.Vector3();
-
-    for (let face = 0; face < this.faceCount; face++) {
-      for (let y = 0; y < this.divisions; y++) {
-        for (let x = 0; x < this.divisions; x++) {
-
-          const px = (x - 1) * cell;
-          const py = (1 - y) * cell;
-
-          // 面ごとの基底ベクトル定義
-          switch (face) {
-            case 0: // front
-              rightVec.set(1, 0, 0);
-              upVec.set(0, 1, 0);
-              normal.set(0, 0, 1);
-              break;
-
-            case 1: // back
-              rightVec.set(-1, 0, 0);
-              upVec.set(0, 1, 0);
-              normal.set(0, 0, -1);
-              break;
-
-            case 2: // right
-              rightVec.set(0, 0, -1);
-              upVec.set(0, 1, 0);
-              normal.set(1, 0, 0);
-              break;
-
-            case 3: // left
-              rightVec.set(0, 0, 1);
-              upVec.set(0, 1, 0);
-              normal.set(-1, 0, 0);
-              break;
-
-            case 4: // top
-              rightVec.set(1, 0, 0);
-              upVec.set(0, 0, -1);
-              normal.set(0, 1, 0);
-              break;
-
-            case 5: // bottom
-              rightVec.set(1, 0, 0);
-              upVec.set(0, 0, 1);
-              normal.set(0, -1, 0);
-              break;
-          }
-
-          // 最終位置
-          const position = new THREE.Vector3()
-            .addScaledVector(rightVec, px)
-            .addScaledVector(upVec, py)
-            .addScaledVector(normal, size / 2);
-
-          all.position.copy(position);
-
-          // 回転（normalに向ける）
-          all.quaternion.setFromUnitVectors(
-            new THREE.Vector3(0, 0, 1),
-            normal
-          );
-
-          all.updateMatrix();
-          this.mesh.setMatrixAt(i, all.matrix);
-
-          i++;
-        }
-      }
-    }
-
-    const texIndices = new Float32Array(this.totalCount);
-
-    for (let i = 0; i < this.totalCount; i++) {
-      texIndices[i] = i % 6;
-    }
-
-    this.mesh.geometry.setAttribute('aTexIndex', new THREE.InstancedBufferAttribute(texIndices, 1));
+    this.setInstanceMatrices(cell);
+    this.setTextureIndices();
 
     this.scene.add(this.mesh);
   }
 
-  hoverEvent() {
-    const map = {
-      apple: 0,
-      orange: 1,
-      grape: 2,
-      remon: 3,
-      watermelon: 4,
-      kiwi: 5,
+  private setInstanceMatrices(cell: number) {
+    const dummy = new THREE.Object3D();
+    const baseNormal = new THREE.Vector3(0, 0, 1);
+
+    let index = 0;
+
+    this.faceConfigs.forEach((face) => {
+      const right = new THREE.Vector3(...face.right);
+      const up = new THREE.Vector3(...face.up);
+      const normal = new THREE.Vector3(...face.normal);
+
+      for (let y = 0; y < this.divisions; y++) {
+        for (let x = 0; x < this.divisions; x++) {
+          const px = (x - 1) * cell;
+          const py = (1 - y) * cell;
+
+          const position = new THREE.Vector3()
+            .addScaledVector(right, px)
+            .addScaledVector(up, py)
+            .addScaledVector(normal, this.cubeSize / 2);
+
+          dummy.position.copy(position);
+          dummy.quaternion.setFromUnitVectors(baseNormal, normal);
+          dummy.updateMatrix();
+
+          this.mesh.setMatrixAt(index, dummy.matrix);
+          index++;
+        }
+      }
+    })
+  }
+
+  private setTextureIndices() {
+    const texIndices = new Float32Array(this.totalCount);
+
+    for (let i = 0; i < this.totalCount; i++) {
+      texIndices[i] = i % this.faceCount;
     }
 
+    this.mesh.geometry.setAttribute(
+      'aTexIndex',
+      new THREE.InstancedBufferAttribute(texIndices, 1)
+    );
+  }
+
+  introAnimation() {
+    this.mesh.scale.set(0, 0, 0);
+    this.mesh.rotation.y = -Math.PI / 4;
+    this.mesh.rotation.z = -Math.PI / 6;
+
+    gsap.to(this.mesh.scale, {
+      x: 1, y: 1, z: 1,
+      duration: 1.2,
+      ease: 'back.out(1.7)',
+    });
+
+    gsap.timeline()
+      .to(this.intro, {
+        rotationSpeed: 4.0, // 加速
+        duration: 0.6,
+        ease: 'power3.in'
+      })
+      .to(this.intro, {
+        rotationSpeed: 0.8, // 減速して通常へ
+        duration: 1.0,
+        ease: 'power3.out',
+        onComplete: () => {
+          this.intro.done = true;
+        }
+      });
+  }
+
+  private setupHoverEvent() {
     const links = document.querySelectorAll('.links a');
+    const material = this.mesh.material as THREE.ShaderMaterial;
 
     links.forEach(link => {
-      const meshMaterial = this.mesh.material as THREE.ShaderMaterial;
 
       link.addEventListener('mouseenter', () => {
-        const slug = link.getAttribute('data-slug')! as keyof typeof map;
-        if (meshMaterial.uniforms.uActiveTex) {
-          meshMaterial.uniforms.uActiveTex.value = map[slug!];
-        }
+        const slug = link.getAttribute('data-slug') as FruitKey;
+        const next = this.textureMap[slug];
+
+        this.handleHoverEvent(material, next);
       });
 
       link.addEventListener('mouseleave', () => {
-        if (meshMaterial.uniforms.uActiveTex) {
-          meshMaterial.uniforms.uActiveTex.value = -1;
-        }
+        this.handleHoverLeave(material);
       });
     });
   }
 
-  private setGui() {
-    const PARAMS = {
-      size: this.cubeSize,
-      gap: this.gap,
-    };
+  private handleHoverEvent(
+    material: THREE.ShaderMaterial,
+    next: number
+  ) {
+    this.activeTex = next;
+    this.progressTween?.kill();
 
-    const pane = new Gui();
-    pane.addBinding(PARAMS, 'size', { min: 0, max: 2 });
-    pane.addBinding(PARAMS, 'gap', { min: 0, max: 1 });
+    material.uniforms.uActiveTex!.value = this.activeTex;
 
-    pane.on('change', () => {
-      this.cubeSize = PARAMS.size;
-      this.gap = PARAMS.gap;
+    this.progressTween = gsap.to(material.uniforms.uProgress!, {
+      value: 1,
+      duration: 0.45,
+      ease: 'power2.out',
+    });
+
+    gsap.to(this.mesh.scale, {
+      x: 1.25, y: 1.25, z: 1.25,
+      duration: 0.45,
+      ease: 'power2.out',
+    });
+  }
+
+  private handleHoverLeave(material: THREE.ShaderMaterial) {
+    this.progressTween?.kill();
+
+    gsap.to(material.uniforms.uProgress!, {
+      value: 0,
+      duration: 0.45,
+      ease: 'power2.out',
+    });
+
+    gsap.to(this.mesh.scale, {
+      x: 1, y: 1, z: 1,
+      duration: 0.45,
+      ease: 'power2.out',
     });
   }
 
   private animate() {
     const delta = this.clock.getDelta();
 
-    // this.mesh.rotation.x += delta * 0.5;
-    // this.mesh.rotation.y += delta * 0.5;
+    // イントロ中：加速回転
+    if (!this.intro.done) {
+      this.mesh.rotation.x += delta * this.intro.rotationSpeed * 0.8;
+      this.mesh.rotation.y += delta * this.intro.rotationSpeed * 1.2;
+    } else {
+      // 通常状態
+      this.mesh.rotation.x += delta * 0.5;
+      this.mesh.rotation.y += delta * 0.5;
+    }
 
     this.renderer.render(this.scene, this.camera);
   }
